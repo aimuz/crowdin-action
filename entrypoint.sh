@@ -92,9 +92,6 @@ create_pull_request() {
   ORG_NAME=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)
   PULLS_URL="${REPO_URL}/pulls"
 
-  echo "PULLS_URL: ${PULLS_URL}"
-  echo "AUTH_HEADER: ${AUTH_HEADER}"
-  echo "HEADER: ${HEADER}"
   auth_status=$(curl -sL --write-out '%{http_code}' --output /dev/null -H "${AUTH_HEADER}" -H "${HEADER}" "${PULLS_URL}")
   if [[ $auth_status -eq 403 || "$auth_status" -eq 401 ]] ; then
     echo "FAILED TO AUTHENTICATE USING 'GITHUB_TOKEN' CHECK TOKEN IS VALID"
@@ -115,7 +112,7 @@ create_pull_request() {
     fi
   fi
 
-  pull_requests_response=$(curl -sSL -w "%{http_code}" -H "${AUTH_HEADER}" -H "${HEADER}" -X GET "${PULLS_URL}?base=${BASE_BRANCH}&head=${ORG_NAME}:${BRANCH}")
+  pull_requests_response=$(curl -sSL -w "%{http_code}" -H "${AUTH_HEADER}" -H "${HEADER}" -X GET "${PULLS_URL}/base/${BASE_BRANCH}/head/${BRANCH}")
   http_code="${pull_requests_response: -3}"
   response_body="${pull_requests_response%???}"
 
