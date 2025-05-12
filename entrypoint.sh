@@ -82,7 +82,7 @@ create_pull_request() {
   AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
   HEADER="Accept: application/vnd.github.v3+json; application/vnd.github.antiope-preview+json; application/vnd.github.shadow-cat-preview+json"
 
-  export INPUT_GITHUB_API_BASE_URL="git.tongdiaotech.com"
+  export INPUT_GITHUB_API_BASE_URL="git.tongdiaotech.com/api/v1"
   if [ -n "$INPUT_GITHUB_API_BASE_URL" ]; then
     REPO_URL="https://${INPUT_GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}"
   else
