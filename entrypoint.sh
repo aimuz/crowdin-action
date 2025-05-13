@@ -80,13 +80,13 @@ create_pull_request() {
   BRANCH="${1}"
 
   AUTH_HEADER="Authorization: token ${GITHUB_TOKEN}"
-  HEADER="Accept: application/vnd.github.v3+json; application/vnd.github.antiope-preview+json; application/vnd.github.shadow-cat-preview+json"
+  HEADER="Accept: application/json"
 
-  export INPUT_GITHUB_API_BASE_URL="git.tongdiaotech.com/api/v1"
+  export INPUT_GITHUB_API_BASE_URL="git.tongdiaotech.com"
   if [ -n "$INPUT_GITHUB_API_BASE_URL" ]; then
-    REPO_URL="https://${INPUT_GITHUB_API_BASE_URL}/repos/${GITHUB_REPOSITORY}"
+    REPO_URL="https://${INPUT_GITHUB_API_BASE_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
   else
-    REPO_URL="https://api.${INPUT_GITHUB_BASE_URL}/repos/${GITHUB_REPOSITORY}"
+    REPO_URL="https://api.${INPUT_GITHUB_BASE_URL}/api/v1/repos/${GITHUB_REPOSITORY}"
   fi
 
   ORG_NAME=$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)
@@ -112,17 +112,9 @@ create_pull_request() {
     fi
   fi
 
-  pull_requests_response=$(curl -sSL -w "%{http_code}" -H "${AUTH_HEADER}" -H "${HEADER}" -X GET "${PULLS_URL}/${BASE_BRANCH}/${BRANCH}")
-  http_code="${pull_requests_response: -3}"
-  response_body="${pull_requests_response%???}"
-
-  if [ "$http_code" -ne 200 ]; then
-    echo "Error: Failed to fetch pull requests. HTTP status: $http_code"
-    echo "Response: $response_body"
-    exit 1
-  fi
-
-  PULL_REQUESTS=$(echo "$response_body" | jq --raw-output '.[] | .head.ref')
+  # Check existing PRs
+  pull_requests_response=$(curl -sSL -H "${AUTH_HEADER}" -H "${HEADER}" "${PULLS_URL}?state=open")
+  PULL_REQUESTS=$(echo "$pull_requests_response" | jq --raw-output '.[] | select(.head.ref == "'$BRANCH'") | .head.ref')
 
   if echo "$PULL_REQUESTS" | grep -xq "$BRANCH"; then
     echo "PULL REQUEST ALREADY EXIST"
@@ -138,12 +130,13 @@ create_pull_request() {
                                 --arg branch "${BRANCH}" \
                                 --arg body "${BODY}" \
                                 "{title: \$pr_title, base: \$base_branch, head: \$branch ${BODY}}")
+
     # create pull request
     PULL_RESPONSE=$(curl -sSL -H "${AUTH_HEADER}" -H "${HEADER}" -X POST --data "${PULL_RESPONSE_DATA}" "${PULLS_URL}")
 
     set +x
-    PULL_REQUESTS_URL=$(echo "${PULL_RESPONSE}" | jq '.html_url')
-    PULL_REQUESTS_NUMBER=$(echo "${PULL_RESPONSE}" | jq '.number')
+    PULL_REQUESTS_URL=$(echo "${PULL_RESPONSE}" | jq -r '.html_url')
+    PULL_REQUESTS_NUMBER=$(echo "${PULL_RESPONSE}" | jq -r '.number')
     view_debug_output
 
     if [ -n "$PULL_REQUESTS_URL" ]; then
@@ -157,72 +150,7 @@ create_pull_request() {
     if [ "$PULL_REQUESTS_URL" = null ]; then
       echo "FAILED TO CREATE PULL REQUEST"
       echo "RESPONSE: ${PULL_RESPONSE}"
-
       exit 1
-    fi
-
-    if [ -n "$INPUT_PULL_REQUEST_LABELS" ]; then
-      PULL_REQUEST_LABELS=$(echo "[\"${INPUT_PULL_REQUEST_LABELS}\"]" | sed 's/, \|,/","/g')
-
-      if [ "$(echo "$PULL_REQUEST_LABELS" | jq -e . > /dev/null 2>&1; echo $?)" -eq 0 ]; then
-        echo "ADD LABELS TO PULL REQUEST"
-
-        ISSUE_URL="${REPO_URL}/issues/${PULL_REQUESTS_NUMBER}"
-
-        LABELS_DATA="{\"labels\":${PULL_REQUEST_LABELS}}"
-
-        # add labels to created pull request
-        curl -sSL -H "${AUTH_HEADER}" -H "${HEADER}" -X PATCH --data "${LABELS_DATA}" "${ISSUE_URL}"
-      else
-        echo "JSON OF pull_request_labels IS INVALID: ${PULL_REQUEST_LABELS}"
-      fi
-    fi
-
-    if [ -n "$INPUT_PULL_REQUEST_ASSIGNEES" ]; then
-      PULL_REQUEST_ASSIGNEES=$(echo "[\"${INPUT_PULL_REQUEST_ASSIGNEES}\"]" | sed 's/, \|,/","/g')
-
-      if [ "$(echo "$PULL_REQUEST_ASSIGNEES" | jq -e . > /dev/null 2>&1; echo $?)" -eq 0 ]; then
-        echo "ADD ASSIGNEES TO PULL REQUEST"
-
-        ASSIGNEES_URL="${REPO_URL}/issues/${PULL_REQUESTS_NUMBER}/assignees"
-
-        ASSIGNEES_DATA="{\"assignees\":${PULL_REQUEST_ASSIGNEES}}"
-
-        # add assignees to created pull request
-        curl -sSL -H "${AUTH_HEADER}" -H "${HEADER}" -X POST --data "${ASSIGNEES_DATA}" "${ASSIGNEES_URL}"
-      else
-        echo "JSON OF pull_request_assignees IS INVALID: ${PULL_REQUEST_ASSIGNEES}"
-      fi
-    fi
-
-    if [ -n "$INPUT_PULL_REQUEST_REVIEWERS" ] || [ -n "$INPUT_PULL_REQUEST_TEAM_REVIEWERS" ]; then
-      if [ -n "$INPUT_PULL_REQUEST_REVIEWERS" ]; then
-        PULL_REQUEST_REVIEWERS=$(echo "\"${INPUT_PULL_REQUEST_REVIEWERS}\"" | sed 's/, \|,/","/g')
-
-        if [ "$(echo "$PULL_REQUEST_REVIEWERS" | jq -e . > /dev/null 2>&1; echo $?)" -eq 0 ]; then
-          echo "ADD REVIEWERS TO PULL REQUEST"
-        else
-          echo "JSON OF pull_request_reviewers IS INVALID: ${PULL_REQUEST_REVIEWERS}"
-        fi
-      fi
-
-      if [ -n "$INPUT_PULL_REQUEST_TEAM_REVIEWERS" ]; then
-        PULL_REQUEST_TEAM_REVIEWERS=$(echo "\"${INPUT_PULL_REQUEST_TEAM_REVIEWERS}\"" | sed 's/, \|,/","/g')
-
-        if [ "$(echo "$PULL_REQUEST_TEAM_REVIEWERS" | jq -e . > /dev/null 2>&1; echo $?)" -eq 0 ]; then
-          echo "ADD TEAM REVIEWERS TO PULL REQUEST"
-        else
-          echo "JSON OF pull_request_team_reviewers IS INVALID: ${PULL_REQUEST_TEAM_REVIEWERS}"
-        fi
-      fi
-
-      {
-        REVIEWERS_URL="${REPO_URL}/pulls/${PULL_REQUESTS_NUMBER}/requested_reviewers"
-        REVIEWERS_DATA="{\"reviewers\":[${PULL_REQUEST_REVIEWERS}],\"team_reviewers\":[${PULL_REQUEST_TEAM_REVIEWERS}]}"
-        curl -sSL -H "${AUTH_HEADER}" -H "${HEADER}" -X POST --data "${REVIEWERS_DATA}" "${REVIEWERS_URL}"
-      } || {
-         echo "Failed to add reviewers."
-      }
     fi
 
     echo "PULL REQUEST CREATED: ${PULL_REQUESTS_URL}"
