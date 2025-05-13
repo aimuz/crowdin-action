@@ -129,7 +129,7 @@ create_pull_request() {
                                 --arg base_branch "${BASE_BRANCH}" \
                                 --arg branch "${BRANCH}" \
                                 --arg body "${BODY}" \
-                                "{title: \$pr_title, base: \$base_branch, head: \$branch ${BODY}}")
+                                "{title: \$pr_title, base: \$base_branch, head: \"${ORG_NAME}:${BRANCH}\" ${BODY}}")
 
     # create pull request
     PULL_RESPONSE=$(curl -sSL -H "${AUTH_HEADER}" -H "${HEADER}" -X POST --data "${PULL_RESPONSE_DATA}" "${PULLS_URL}")
